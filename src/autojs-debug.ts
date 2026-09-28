@@ -42,15 +42,14 @@ export class Device extends EventEmitter {
       this.attached = true;
       this.name = data['device_name'];
       let message_id = `${Date.now()}_${Math.random()}`;
-      let appVersionCode = data['app_version_code']
-      // @ts-ignore
-      let extensionVersion = _context.extension.packageJSON.version
-      let returnData
-      if (appVersionCode >= 629) {
-        returnData = JSON.stringify({ message_id, data: "ok", version: extensionVersion, debug: DEBUG, type: 'hello' })
-      } else {
-        returnData = JSON.stringify({ message_id, data: "连接成功", debug: DEBUG, type: 'hello' })
-      }
+      // 关键兼容性修复：手机端 DevPlugin.serveHello 用【本端回复】的 versionCode
+      // (即 HelloResponse.version 去掉点后的数字，缺省 -1) 决定期望的 ok 字符串：
+      //   versionCode < 11090  → 期望 "连接成功"
+      //   versionCode >= 11090 → 期望 "ok"
+      // 原逻辑按手机 appVersionCode>=629 回 "ok"，但本机 AutoX 7.2.3(code 723) 会因此握手失败断连。
+      // 统一带低版本(7.2.3→723<11090)并回 "连接成功"，可引导所有手机都期望 "连接成功"，握手必成功，
+      // 同时兼容旧版无条件期望 "连接成功" 的手机。
+      let returnData = JSON.stringify({ message_id, data: "连接成功", version: "7.2.3", debug: DEBUG, type: 'hello' })
       logDebug("return data: ", returnData)
       this.connection.sendUTF(returnData);
       this.emit("attach", this);
@@ -257,7 +256,14 @@ export class AutoJsDebugServer extends EventEmitter {
     let thisServer = this
     let devices = await thisServer.adbClient.listDevices()
     for (let device0 of devices) {
-      await thisServer.connectDevice(device0.id)
+      // 防御：listDevices 会返回 unauthorized/offline 设备，对其 forward 会抛
+      // FailError（Failure: ''）并中断整个 trackADBDevices，导致 MCP 服务起不来。
+      // 逐设备隔离，失败仅跳过该设备。
+      try {
+        await thisServer.connectDevice(device0.id)
+      } catch (e: any) {
+        console.error(`skip device ${device0.id}: ${e && e.message ? e.message : e}`)
+      }
     }
     if (this.tracker) {
       this.emit("adb:tracking_started");
@@ -298,12 +304,19 @@ export class AutoJsDebugServer extends EventEmitter {
     if (!device) device = this.adbClient.getDevice(id)
     let wsDevice = this.getDeviceById(id)
     if (wsDevice && wsDevice.attached) return
-    let forwards: Forward[] = await this.listForwards(device, id)
-    if (forwards.length == 0) {
-      let forwarded = await device.forward(`tcp:0`, `tcp:9317`)
-      if (forwarded) {
-        forwards = await this.listForwards(device, id)
+    let forwards: Forward[] = []
+    try {
+      forwards = await this.listForwards(device, id)
+      if (forwards.length == 0) {
+        let forwarded = await device.forward(`tcp:0`, `tcp:9317`)
+        if (forwarded) {
+          forwards = await this.listForwards(device, id)
+        }
       }
+    } catch (e: any) {
+      // 设备不可用（unauthorized/offline）时 forward 失败：跳过，不抛出。
+      console.error(`forward failed for ${id}: ${e && e.message ? e.message : e}`)
+      return
     }
     if (forwards.length > 0) {
       let forward = forwards[0]
@@ -429,11 +442,14 @@ export class AutoJsDebugServer extends EventEmitter {
   }
 
   private detachDevice(device: Device): void {
-    this.devices.splice(this.devices.indexOf(device), 1);
+    const idx = this.devices.indexOf(device);
+    if (idx >= 0) { this.devices.splice(idx, 1); }
     console.log("detachDevice: " + device);
     vscode.window.showInformationMessage(`Device disconnected: ${device}`)
+    // 防御：trackADBDevices 直连路径可能未创建日志通道，getLogChannel 会返回 undefined，
+    // 直接 .dispose() 会抛 "Cannot read properties of undefined (reading 'dispose')"。
     var logChannel = this.getLogChannel(device)
-    logChannel.dispose();
+    if (logChannel) { logChannel.dispose(); }
     this.logChannels.delete(device.toString())
   }
 

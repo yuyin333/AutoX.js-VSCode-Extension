@@ -2,7 +2,7 @@
   "name": "auto-js-vsce-fixed",
   "displayName": "Auto.js-Autox.js-VSCodeExt",
   "description": "用于在pc上vscode中开发autoxjs的自动化脚本的插件。兼容autojs 和autoxjs,增加功能：usb方式adb进行连接; 右键【文件夹】保存项目到设备;右键【js文件】运行;js文件中点击右上角运行; 结合webpack自动编译，js自动运行到手机",
-  "version": "1.109.0",
+  "version": "2.0.0",
   "publisher": "aaroncheng",
   "icon": "logo.png",
   "repository": {
@@ -16,6 +16,7 @@
     "Other"
   ],
   "activationEvents": [
+    "onStartupFinished",
     "onCommand:extension.startAllServer",
     "onCommand:extension.stopAllServer",
     "onCommand:extension.startTrackADBDevices",
@@ -35,7 +36,9 @@
     "onCommand:extension.saveToDevice",
     "onCommand:extension.newProject",
     "onCommand:extension.runProject",
-    "onCommand:extension.saveProject"
+    "onCommand:extension.saveProject",
+    "onCommand:extension.startMcpServer",
+    "onCommand:extension.stopMcpServer"
   ],
   "main": "./out/extension",
   "contributes": {
@@ -187,6 +190,16 @@
       {
         "command": "extension.runProject",
         "title": "运行项目(Run Project)",
+        "category": "Auto.js autoxjs"
+      },
+      {
+        "command": "extension.startMcpServer",
+        "title": "启动 AutoX MCP 服务(Start MCP Server)",
+        "category": "Auto.js autoxjs"
+      },
+      {
+        "command": "extension.stopMcpServer",
+        "title": "停止 AutoX MCP 服务(Stop MCP Server)",
         "category": "Auto.js autoxjs"
       }
     ],

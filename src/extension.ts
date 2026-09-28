@@ -2,6 +2,7 @@
 import * as vscode from 'vscode';
 import { AutoJsDebugServer, Device } from './autojs-debug';
 import { ProjectTemplate, Project } from './project';
+import { McpBridge } from './mcp';
 
 import * as fs from 'fs'
 import * as path from "path";
@@ -72,6 +73,7 @@ class Extension {
   private documentViewPanel: any = undefined;
   private qrCodeViewPanel: any = undefined;
   private documentCache: Map<string, string> = new Map<string, string>();
+  private mcpBridge: McpBridge | undefined = undefined;
 
   showServerAddress() {
     let servers = server.getIPs().join(":" + server.getPort() + " or ") + ":" + server.getPort();
@@ -235,6 +237,32 @@ class Extension {
 
   stopServer() {
     server.disconnect();
+  }
+
+  /** 启动 AutoX MCP 桥（HTTP/SSE，127.0.0.1:18789/sse），复用 server 单例暴露工具给 AI 主机（方案 §14.7）。
+   *  同时拉起调试服务并自动跟踪/连接 ADB 设备：adb 模式下手机是 WS 服务端，扩展必须主动 connectDevice
+   *  才能把设备附加到 server.devices，否则 getDeviceById 永远拿不到设备、MCP 工具全部“无设备”（方案 §16 真机验证结论）。*/
+  startMcpServer() {
+    if (!this.mcpBridge) {
+      if (!server.isHttpServerStarted) {
+        server.listen();
+      }
+      server.trackADBDevices();
+      this.mcpBridge = new McpBridge(server, 18789);
+      this.mcpBridge.start();
+      vscode.window.showInformationMessage('AutoX MCP server started at http://127.0.0.1:18789/sse (device auto-connecting)');
+    } else {
+      vscode.window.showInformationMessage('AutoX MCP server already running');
+    }
+  }
+
+  /** 停止 AutoX MCP 桥 */
+  stopMcpServer() {
+    if (this.mcpBridge) {
+      this.mcpBridge.stop();
+      this.mcpBridge = undefined;
+      vscode.window.showInformationMessage('AutoX MCP server stopped');
+    }
   }
 
   startTrackADBDevices() {
@@ -447,7 +475,8 @@ export let _context: vscode.ExtensionContext;
 let extension = new Extension();
 const commands = ['startAllServer', 'stopAllServer', 'startServer', 'stopServer', 'startTrackADBDevices',
   'stopTrackADBDevices', 'manuallyConnectADB', 'manuallyDisconnect', 'showServerAddress', 'showQrCode', 'openDocument', 'run', 'runOnDevice',
-  'stop', 'stopAll', 'rerun', 'save', 'saveToDevice', 'newProject', 'runProject', 'saveProject'];
+  'stop', 'stopAll', 'rerun', 'save', 'saveToDevice', 'newProject', 'runProject', 'saveProject',
+  'startMcpServer', 'stopMcpServer'];
 
 export function activate(context: vscode.ExtensionContext) {
   console.log('extension "Autox.js-VSCode-Extension " is now active.');
@@ -458,8 +487,12 @@ export function activate(context: vscode.ExtensionContext) {
     // @ts-ignore
     console.log(context.extension.packageJSON.version)
   })
+  // 自动拉起 MCP 桥，让 AI 主机随时可连（方案 §15.3）
+  extension.startMcpServer();
 }
 
 export function deactivate() {
+  extension.stopMcpServer();
+  server.stopTrackADBDevices();
   server.disconnect();
 }

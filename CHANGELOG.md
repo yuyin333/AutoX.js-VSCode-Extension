@@ -4,6 +4,30 @@ All notable changes to the "auto-js-vscodeext-fixed" extension will be documente
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## 版本号说明
+
+上游原版是 `1.x`（写作本文时最新为 v1.110.0）。本分支（`auto-js-vsce-fixed`）在 1.109.0 基础上
+加入了上游没有的 **内置 MCP Server** 与 `get_layout` v2 等改动，属于功能级分叉，
+因此自 1.109.1 之后改为 **2.x** 重新编号，与上游版本线区分开，避免版本号撞车造成误判。
+
+### 2.0.0
+- 版本线正式从 1.x 迁移到 2.x（上一次打包为 1.109.1，内容与此版本一致）
+- 内置 **MCP Server**（默认 `127.0.0.1:18789`，命令：`启动/停止 AutoX MCP 服务`），
+  让 AI/客户端可直接驱动手机，共 7 个工具：
+  - `device_list` / `device_connect` / `device_stop`：设备发现、连接、停脚本
+  - `device_screenshot`：设备截图
+  - `device_get_layout`：获取界面布局树
+  - `device_run_code`：在设备上执行 AutoX 代码（支持 `timeoutMs`，上限 120s，超时与正常结束分别上报）
+  - `device_tap`：点击目标节点（重取布局 + 指纹校验，`node.click()` → 祖先 `click()` → 坐标点击 三级回退）
+- `get_layout` v2 重写：
+  - 以 `isVisibleToUser()` 为主判据（比 bounds 更准，可识别被软键盘遮挡的节点），只返回当前屏幕可见节点
+  - 坐标改为**可见交集矩形**中心（`clamp` 到安全区），修掉退化 bounds 点到状态栏的问题
+  - 恢复输出「有文案但不可点击」的节点（可作坐标锚点），不再被过滤规则误删
+  - 新增 `ref`（`hash.ord`）稳定定位、`dropped` 分桶（notVisible / occluded / belowFold 等，互斥）、
+    `scrollables` 列表；`mode` 支持 `actionable` / `tree` / `verbose`
+- 修复手机端 Hello 握手兼容问题：按本端回复的 `versionCode` 决定期望字符串，
+  解决 AutoX 7.x（versionCode 723）因握手不匹配导致断连
+
 ### 1.109.0
 - 添加心跳检测（需要Autox.js 6.2.9 版本以上才会启用）
 - 设备断开连接后关闭日志通道
