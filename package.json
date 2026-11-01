@@ -1,44 +1,56 @@
 {
-  "name": "auto-js-vsce-fixed",
-  "displayName": "Auto.js-Autox.js-VSCodeExt",
-  "description": "用于在pc上vscode中开发autoxjs的自动化脚本的插件。兼容autojs 和autoxjs,增加功能：usb方式adb进行连接; 右键【文件夹】保存项目到设备;右键【js文件】运行;js文件中点击右上角运行; 结合webpack自动编译，js自动运行到手机",
-  "version": "2.0.0",
-  "publisher": "aaroncheng",
-  "icon": "logo.png",
-  "repository": {
-    "type": "github",
-    "url": "https://github.com/kkevsekk1/Auto.js-VSCode-Extension"
+  "name": "autox-js-vsce-ai",
+  "displayName": "Autox.js-VSCodeExt-Ai",
+  "description": "Auto.js / Autox.js 的 VS Code 开发插件（AI 增强分支）：ADB 无线连接、脚本下发与运行、项目同步、内置 MCP Server、剪贴板同步。基于 Auto.js / Autox.js 生态开源项目二次开发，遵循 GPL-2.0。",
+  "version": "2.2.3",
+  "publisher": "autoxai",
+  "author": {
+    "name": "Autox.js-Ai Maintainer"
   },
+  "license": "GPL-2.0-only",
+  "keywords": [
+    "autojs",
+    "autoxjs",
+    "android",
+    "automation",
+    "mcp"
+  ],
+  "icon": "logo.png",
   "engines": {
     "vscode": "^1.69.0"
   },
   "categories": [
+    "Programming Languages",
     "Other"
   ],
   "activationEvents": [
     "onStartupFinished",
-    "onCommand:extension.startAllServer",
-    "onCommand:extension.stopAllServer",
-    "onCommand:extension.startTrackADBDevices",
-    "onCommand:extension.stopTrackADBDevices",
-    "onCommand:extension.manuallyConnectADB",
-    "onCommand:extension.manuallyDisconnect",
-    "onCommand:extension.showQrCode",
-    "onCommand:extension.showServerAddress",
-    "onCommand:extension.openDocument",
-    "onCommand:extension.startServer",
-    "onCommand:extension.stopServer",
-    "onCommand:extension.run",
-    "onCommand:extension.runOnDevice",
-    "onCommand:extension.stop",
-    "onCommand:extension.stopAll",
-    "onCommand:extension.save",
-    "onCommand:extension.saveToDevice",
-    "onCommand:extension.newProject",
-    "onCommand:extension.runProject",
-    "onCommand:extension.saveProject",
-    "onCommand:extension.startMcpServer",
-    "onCommand:extension.stopMcpServer"
+    "onCommand:autoxAi.startAllServer",
+    "onCommand:autoxAi.stopAllServer",
+    "onCommand:autoxAi.startTrackADBDevices",
+    "onCommand:autoxAi.stopTrackADBDevices",
+    "onCommand:autoxAi.manuallyConnectADB",
+    "onCommand:autoxAi.manuallyDisconnect",
+    "onCommand:autoxAi.showQrCode",
+    "onCommand:autoxAi.showServerAddress",
+    "onCommand:autoxAi.openDocument",
+    "onCommand:autoxAi.startServer",
+    "onCommand:autoxAi.stopServer",
+    "onCommand:autoxAi.run",
+    "onCommand:autoxAi.rerun",
+    "onCommand:autoxAi.runOnDevice",
+    "onCommand:autoxAi.stop",
+    "onCommand:autoxAi.stopAll",
+    "onCommand:autoxAi.save",
+    "onCommand:autoxAi.saveToDevice",
+    "onCommand:autoxAi.newProject",
+    "onCommand:autoxAi.runProject",
+    "onCommand:autoxAi.saveProject",
+    "onCommand:autoxAi.startMcpServer",
+    "onCommand:autoxAi.stopMcpServer",
+    "onCommand:autoxAi.clipSyncToggle",
+    "onCommand:autoxAi.clipSyncInstallSender",
+    "onCommand:autoxAi.clipSyncStatus"
   ],
   "main": "./out/extension",
   "contributes": {
@@ -57,188 +69,298 @@
       "editor/title": [
         {
           "when": "resourceLangId == javascript",
-          "command": "extension.openDocument",
+          "command": "autoxAi.openDocument",
           "group": "navigation@2"
         },
         {
           "when": "resourceLangId == javascript",
-          "command": "extension.run",
+          "command": "autoxAi.run",
           "group": "navigation@1"
         }
       ],
       "explorer/context": [
         {
           "when": "explorerResourceIsFolder",
-          "command": "extension.saveProject",
+          "command": "autoxAi.saveProject",
           "group": "navigation"
         },
         {
           "when": "!explorerResourceIsFolder&&resourceExtname==.js",
-          "command": "extension.rerun",
+          "command": "autoxAi.rerun",
           "group": "navigation@1"
         },
         {
           "when": "!explorerResourceIsFolder",
-          "command": "extension.save",
+          "command": "autoxAi.save",
           "group": "navigation@2"
         }
       ]
     },
     "commands": [
       {
-        "command": "extension.openDocument",
+        "command": "autoxAi.openDocument",
         "title": "打开文档(Open Document)",
         "icon": "logo.png",
-        "category": "Auto.js autoxjs"
+        "category": "Autox.js"
       },
       {
-        "command": "extension.showQrCode",
+        "command": "autoxAi.showQrCode",
         "title": "显示服务端二维码(Show qr code)",
-        "category": "Auto.js autoxjs"
+        "category": "Autox.js"
       },
       {
-        "command": "extension.showServerAddress",
+        "command": "autoxAi.showServerAddress",
         "title": "显示服务端ip地址(Show server address)",
-        "category": "Auto.js autoxjs"
+        "category": "Autox.js"
       },
       {
-        "command": "extension.startAllServer",
+        "command": "autoxAi.startAllServer",
         "title": "开启服务并监听ADB设备(Start all server), 如有多个同类插件，请禁用其他或本插件",
-        "category": "Auto.js autoxjs"
+        "category": "Autox.js"
       },
       {
-        "command": "extension.stopAllServer",
+        "command": "autoxAi.stopAllServer",
         "title": "停止服务并停止监听ADB设备(Stop all server)",
-        "category": "Auto.js autoxjs"
+        "category": "Autox.js"
       },
       {
-        "command": "extension.startServer",
+        "command": "autoxAi.startServer",
         "title": "开启服务(Start Server), 如有多个同类插件，请禁用其他或本插件",
-        "category": "Auto.js autoxjs"
+        "category": "Autox.js"
       },
       {
-        "command": "extension.stopServer",
+        "command": "autoxAi.stopServer",
         "title": "停止服务(Stop Server)",
-        "category": "Auto.js autoxjs"
+        "category": "Autox.js"
       },
       {
-        "command": "extension.startTrackADBDevices",
+        "command": "autoxAi.startTrackADBDevices",
         "title": "开始监听ADB设备(Start track adb devices)",
-        "category": "Auto.js autoxjs"
+        "category": "Autox.js"
       },
       {
-        "command": "extension.stopTrackADBDevices",
+        "command": "autoxAi.stopTrackADBDevices",
         "title": "停止监听ADB设备(Stop track adb devices)",
-        "category": "Auto.js autoxjs"
+        "category": "Autox.js"
       },
       {
-        "command": "extension.manuallyConnectADB",
+        "command": "autoxAi.manuallyConnectADB",
         "title": "手动连接ADB设备(Manually connect adb device)",
-        "category": "Auto.js autoxjs"
+        "category": "Autox.js"
       },
       {
-        "command": "extension.manuallyDisconnect",
+        "command": "autoxAi.manuallyDisconnect",
         "title": "手动关闭设备连接(Manually disconnect device)",
-        "category": "Auto.js autoxjs"
+        "category": "Autox.js"
       },
       {
-        "command": "extension.run",
+        "command": "autoxAi.run",
         "title": "运行脚本(Run)",
         "icon": "play.png",
-        "category": "Auto.js autoxjs"
+        "category": "Autox.js"
       },
       {
-        "command": "extension.runOnDevice",
+        "command": "autoxAi.runOnDevice",
         "title": "在指定设备运行脚本(Run On Device)",
-        "category": "Auto.js autoxjs"
+        "category": "Autox.js"
       },
       {
-        "command": "extension.stop",
+        "command": "autoxAi.stop",
         "title": "停止当前脚本(Stop)",
-        "category": "Auto.js autoxjs"
+        "category": "Autox.js"
       },
       {
-        "command": "extension.stopAll",
+        "command": "autoxAi.stopAll",
         "title": "停止所有脚本(Stop All)",
-        "category": "Auto.js autoxjs"
+        "category": "Autox.js"
       },
       {
-        "command": "extension.rerun",
+        "command": "autoxAi.rerun",
         "title": "重新运行(Rerun)",
-        "category": "Auto.js autoxjs"
+        "category": "Autox.js"
       },
       {
-        "command": "extension.save",
+        "command": "autoxAi.save",
         "title": "保存到所有设备(Save)",
-        "category": "Auto.js autoxjs"
+        "category": "Autox.js"
       },
       {
-        "command": "extension.saveToDevice",
+        "command": "autoxAi.saveToDevice",
         "title": "保存到指定设备(Save On Device)",
-        "category": "Auto.js autoxjs"
+        "category": "Autox.js"
       },
       {
-        "command": "extension.newProject",
+        "command": "autoxAi.newProject",
         "title": "新建项目(New Project)",
-        "category": "Auto.js autoxjs"
+        "category": "Autox.js"
       },
       {
-        "command": "extension.saveProject",
+        "command": "autoxAi.saveProject",
         "title": "保存项目到设备(Save Project)",
-        "category": "Auto.js autoxjs"
+        "category": "Autox.js"
       },
       {
-        "command": "extension.runProject",
+        "command": "autoxAi.runProject",
         "title": "运行项目(Run Project)",
-        "category": "Auto.js autoxjs"
+        "category": "Autox.js"
       },
       {
-        "command": "extension.startMcpServer",
+        "command": "autoxAi.startMcpServer",
         "title": "启动 AutoX MCP 服务(Start MCP Server)",
-        "category": "Auto.js autoxjs"
+        "category": "Autox.js"
       },
       {
-        "command": "extension.stopMcpServer",
+        "command": "autoxAi.stopMcpServer",
         "title": "停止 AutoX MCP 服务(Stop MCP Server)",
-        "category": "Auto.js autoxjs"
+        "category": "Autox.js"
+      },
+      {
+        "command": "autoxAi.clipSyncToggle",
+        "title": "剪贴板同步：开/关(Toggle clipboard sync)",
+        "category": "Autox.js"
+      },
+      {
+        "command": "autoxAi.clipSyncInstallSender",
+        "title": "剪贴板同步：安装手机端「发送剪贴板」脚本(Install sender script)",
+        "category": "Autox.js"
+      },
+      {
+        "command": "autoxAi.clipSyncStatus",
+        "title": "剪贴板同步：查看状态(Clipboard sync status)",
+        "category": "Autox.js"
       }
     ],
     "keybindings": [
       {
-        "command": "extension.openDocument",
+        "command": "autoxAi.openDocument",
         "key": "f4",
         "mac": "f4",
         "when": "editorTextFocus"
       },
       {
-        "command": "extension.run",
+        "command": "autoxAi.run",
         "key": "f5",
         "mac": "f5",
         "when": "editorTextFocus"
       },
       {
-        "command": "extension.stop",
+        "command": "autoxAi.stop",
         "key": "shift+f5",
         "mac": "shift+f5",
         "when": "editorTextFocus"
       },
       {
-        "command": "extension.runOnDevice",
+        "command": "autoxAi.runOnDevice",
         "key": "ctrl+f5",
         "mac": "cmd+f5",
         "when": "editorTextFocus"
       },
       {
-        "command": "extension.rerun",
+        "command": "autoxAi.rerun",
         "key": "ctrl+shift+f5",
         "mac": "cmd+shift+f5",
         "when": "editorTextFocus"
       },
       {
-        "command": "extension.save",
+        "command": "autoxAi.save",
         "key": "ctrl+shift+S",
         "mac": "cmd+shift+S",
         "when": "editorTextFocus"
+      }
+    ],
+    "configuration": [
+      {
+        "title": "Autox.js-VSCodeExt-Ai：连接与端口",
+        "properties": {
+          "autoxAi.serverPort": {
+            "type": "number",
+            "default": 9317,
+            "minimum": 1024,
+            "maximum": 65535,
+            "markdownDescription": "手机调试服务监听端口（默认 **9317**），一般不用改。\n**手机端不是写死 9317**：它只在地址里没写端口时才补 9317 —— 用本插件二维码连接时端口随二维码下发，改这个值照样连得上；\n手动输入地址时必须写成 `IP:端口`（如 `192.168.1.5:9318`）。\nADB/USB 模式与本项无关（那条通道是手机监听 9317、PC 用 adb forward 连过去）。\n只有同时装了另一个同类插件、需要两个电脑端并存时才需要改；端口被占用时会弹窗提示，不再静默失败。"
+          },
+          "autoxAi.mcpPort": {
+            "type": "number",
+            "default": 18789,
+            "minimum": 1024,
+            "maximum": 65535,
+            "description": "内置 MCP Server 监听端口（仅 127.0.0.1）。同时装了多个同类插件时改这个即可避开占用。"
+          },
+          "autoxAi.mcpToken": {
+            "type": "string",
+            "default": "",
+            "markdownDescription": "可选的 MCP 访问令牌，留空即不启用。\n默认已做防护：只接受回环 Host（挡 DNS rebinding），且**拒绝任何带 `Origin` 头的请求**（浏览器请求），因此网页无法调用本服务。\n只有在共享机器、或想再加一层保险时才填；填了之后客户端需带 `Authorization: Bearer <token>` 或 `?token=<token>`。"
+          }
+        }
+      },
+      {
+        "title": "Autox.js-VSCodeExt-Ai：剪贴板同步",
+        "properties": {
+        "clipSync.enabled": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "启用 PC ↔ 手机剪贴板同步。**默认关闭**：剪贴板常含密码/验证码，确认需要同步后再开。"
+        },
+        "clipSync.direction": {
+          "type": "string",
+          "enum": [
+            "both",
+            "pc2phone",
+            "phone2pc"
+          ],
+          "default": "both",
+          "enumDescriptions": [
+            "双向（手机→PC 需在手机上手动运行「剪贴板发送」脚本）",
+            "仅 PC→手机：复制电脑上的内容，自动写入手机剪贴板",
+            "仅 手机→PC"
+          ],
+          "description": "同步方向"
+        },
+        "clipSync.pollIntervalMs": {
+          "type": "number",
+          "default": 300,
+          "minimum": 100,
+          "description": "VS Code 处于焦点时的剪贴板轮询间隔（毫秒）。VS Code 没有剪贴板变化事件，只能轮询。"
+        },
+        "clipSync.unfocusedPollMs": {
+          "type": "number",
+          "default": 2000,
+          "minimum": 300,
+          "description": "VS Code 失焦时的轮询间隔（毫秒）"
+        },
+        "clipSync.maxTextLength": {
+          "type": "number",
+          "default": 32768,
+          "minimum": 1024,
+          "description": "单次同步的最大字符数。超过则跳过（不截断，避免发出半截内容）。"
+        },
+        "clipSync.minDownlinkIntervalMs": {
+          "type": "number",
+          "default": 400,
+          "minimum": 0,
+          "description": "两次下发的最小间隔（毫秒）。每次下发都会在手机上启动一个短脚本任务，太快会扰乱任务列表。"
+        },
+        "clipSync.logContent": {
+          "type": "boolean",
+          "default": false,
+          "description": "在「剪贴板同步」输出通道打印剪贴板正文（默认只打印长度与指纹）。开启会把明文写进 VS Code 日志，注意隐私。"
+        },
+        "clipSync.skipPatterns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "-----BEGIN [A-Z ]*PRIVATE KEY-----"
+          ],
+          "description": "命中任一正则的内容不同步（默认屏蔽私钥块）。"
+        },
+        "clipSync.phoneScriptDir": {
+          "type": "string",
+          "default": "/sdcard/脚本",
+          "markdownDescription": "手机端 AutoX 的脚本目录，安装「发送剪贴板」脚本（`autoclip_send.js`）时写到这里。改过 AutoX 脚本目录的话填新的路径。"
+        }
+        }
       }
     ]
   },
@@ -273,6 +395,5 @@
     "stream-buffers": "^3.0.2",
     "walk": "^2.3.14",
     "websocket": "1.0.26"
-  },
-  "__npminstall_done": false
+  }
 }

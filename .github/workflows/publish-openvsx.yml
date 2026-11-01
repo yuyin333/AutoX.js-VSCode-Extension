@@ -1,0 +1,32 @@
+name: Publish to Open VSX
+
+# 与 publish.yml 独立触发，互不依赖。
+# 需要仓库 Secret：OVSX_PAT（open-vsx.org → Settings → Access Tokens 生成）
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Package VSIX
+        # 先自己打包（带 --allow-missing-repository），再把文件交给 ovsx；
+        # 直接用 ovsx publish 从源码打包时无法传这个开关。
+        run: npx --yes @vscode/vsce@4.0.0 package --allow-missing-repository -o dist/ext.vsix
+
+      - name: Publish to Open VSX
+        run: npx --yes ovsx publish dist/ext.vsix -p "${{ secrets.OVSX_PAT }}"

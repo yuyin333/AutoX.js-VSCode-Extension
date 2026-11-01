@@ -2,28 +2,48 @@
 import * as vscode from 'vscode';
 import { AutoJsDebugServer, Device } from './autojs-debug';
 import { ProjectTemplate, Project } from './project';
-import { McpBridge } from './mcp';
+import { McpBridge, DEFAULT_MCP_PORT } from './mcp';
+import { ClipSyncManager } from './clipboard-sync/clip-sync';
 
 import * as fs from 'fs'
 import * as path from "path";
 
 let server = new AutoJsDebugServer(9317);
+/** activate 自动拉起服务期间为 true：此时端口冲突只做状态栏轻提示，避免每开一个窗口弹一次红框 */
+let silentPortErrors = false;
 let recentDevice = null;
 server
   .on('connect', () => {
     let servers = server.getIPs().join(":" + server.getPort() + " or ") + ":" + server.getPort();
     let showQrcode = "Show QR code"
-    vscode.window.showInformationMessage(`Auto.js Autox.js \r\n server running on ${servers}`, showQrcode).then((result) => {
+    vscode.window.showInformationMessage(`Autox.js-VSCodeExt-Ai \r\n server running on ${servers}`, showQrcode).then((result) => {
       if (result === showQrcode) {
-        vscode.commands.executeCommand("extension.showQrCode")
+        vscode.commands.executeCommand("autoxAi.showQrCode")
       }
     });
   })
   .on('connected', () => {
-    vscode.window.showInformationMessage('Auto.js Server already running');
+    vscode.window.showInformationMessage('Autox.js Server already running');
   })
   .on('disconnect', () => {
-    vscode.window.showInformationMessage('Auto.js Server stopped');
+    vscode.window.showInformationMessage('Autox.js Server stopped');
+  })
+  // 端口被占用等监听失败：以前只 console.error，界面上还显示"已启动"。现在明确告知 + 给出解法。
+  .on('listen_error', (info: { port: number; code: string; message: string }) => {
+    const hint = info.code === 'EADDRINUSE'
+      ? `端口 ${info.port} 已被占用（很可能另一个同类插件——原版 Auto.js-Autox.js-VSCodeExt——正在运行）。\n` +
+        `两个插件同一时刻只能有一个接管手机；如需并存，请把本插件改到别的端口：设置 autoxAi.serverPort。`
+      : `监听 ${info.port} 失败：${info.message || info.code}`;
+    // 启动阶段（activate 自动拉起）失败只做轻提示：否则两个插件都装着时，每开一个窗口就弹一次红框
+    if (silentPortErrors) {
+      console.warn('Autox.js：' + hint);
+      vscode.window.setStatusBarMessage(
+        `$(warning) Autox.js：端口 ${info.port} 被占用，未自动启动（改 autoxAi.serverPort 可避开）`,
+        15000
+      );
+      return;
+    }
+    vscode.window.showErrorMessage('Autox.js：' + hint);
   })
   .on('adb:tracking_start', () => {
     vscode.window.showInformationMessage(`ADB: Tracking start`);
@@ -75,9 +95,38 @@ class Extension {
   private documentCache: Map<string, string> = new Map<string, string>();
   private mcpBridge: McpBridge | undefined = undefined;
 
+  // ---------------------------------------------------------------------------
+  // 剪贴板同步
+  // ---------------------------------------------------------------------------
+  clipSyncToggle() {
+    if (!clipSync) { return; }
+    clipSync.toggle();
+  }
+
+  clipSyncInstallSender() {
+    if (!clipSync) { return; }
+    // 安装要等手机端回执，结果由 installSender 内部提示
+    clipSync.installSender().catch((e: any) => {
+      vscode.window.showErrorMessage('安装失败：' + (e && e.message ? e.message : e));
+    });
+  }
+
+  clipSyncStatus() {
+    if (!clipSync) { return; }
+    clipSync.showStatus();
+  }
+
   showServerAddress() {
+    // 服务没真正监听时不要显示"running on ..."：端口被别的插件占用时，这种假地址最误导人
+    if (!server.isHttpServerStarted) {
+      vscode.window.showWarningMessage(
+        `Autox.js 服务未在监听（端口 ${server.getPort()}）。\n` +
+        `可能被另一个同类插件占用，可在设置 autoxAi.serverPort 换端口后重新启动服务。`
+      );
+      return;
+    }
     let servers = server.getIPs().join(":" + server.getPort() + " or ") + ":" + server.getPort();
-    vscode.window.showInformationMessage(`Auto.js Autox.js \r\n server running on ${servers}`)
+    vscode.window.showInformationMessage(`Autox.js-VSCodeExt-Ai \r\n server running on ${servers}`)
   }
 
   showQrCode() {
@@ -127,6 +176,8 @@ class Extension {
 </head>
 <body>
     <div id="qrcode"></div>
+    <div style="margin-top:12px;font-family:Consolas,Menlo,monospace;font-size:14px;user-select:all">${text}</div>
+    <div style="margin-top:4px;font-size:12px;opacity:.7">扫码连接；手动输入请连同端口一起填</div>
     <script src="${qrcodejs}"></script>
     <script type="text/javascript">
         new QRCode(document.getElementById("qrcode"), {
@@ -243,26 +294,47 @@ class Extension {
    *  同时拉起调试服务并自动跟踪/连接 ADB 设备：adb 模式下手机是 WS 服务端，扩展必须主动 connectDevice
    *  才能把设备附加到 server.devices，否则 getDeviceById 永远拿不到设备、MCP 工具全部“无设备”（方案 §16 真机验证结论）。*/
   startMcpServer() {
-    if (!this.mcpBridge) {
-      if (!server.isHttpServerStarted) {
-        server.listen();
-      }
-      server.trackADBDevices();
-      this.mcpBridge = new McpBridge(server, 18789);
-      this.mcpBridge.start();
-      vscode.window.showInformationMessage('AutoX MCP server started at http://127.0.0.1:18789/sse (device auto-connecting)');
-    } else {
-      vscode.window.showInformationMessage('AutoX MCP server already running');
+    if (this.mcpBridge) {
+      vscode.window.showInformationMessage('Autox.js MCP server already running');
+      return;
     }
+    const port = Extension.readPort('mcpPort', DEFAULT_MCP_PORT);
+    if (!server.isHttpServerStarted) {
+      server.listen();
+    }
+    server.trackADBDevices();
+    const bridge = new McpBridge(server, port);
+    // 可选令牌：留空则只做 Host/Origin 校验（默认，客户端无需任何配置）
+    bridge.setToken(vscode.workspace.getConfiguration('autoxAi').get<string>('mcpToken', ''));
+    this.mcpBridge = bridge;
+    // 等 listen 真正出结果再提示（以前是"先弹成功、再异步 listen"，端口被占时提示与事实相反）
+    bridge.start((ok: boolean, realPort: number, code?: string) => {
+      if (ok) {
+        vscode.window.showInformationMessage(`Autox.js MCP server started at http://127.0.0.1:${realPort}/sse (device auto-connecting)`);
+        return;
+      }
+      this.mcpBridge = undefined;
+      const hint = code === 'EADDRINUSE'
+        ? `端口 ${realPort} 已被占用（可能另一个同类插件在用）。可在设置 autoxAi.mcpPort 换端口后重试。`
+        : `启动失败（${code || 'unknown'}）`;
+      vscode.window.showErrorMessage('Autox.js MCP：' + hint);
+    });
   }
 
-  /** 停止 AutoX MCP 桥 */
+  /** 停止 Autox.js MCP 桥 */
   stopMcpServer() {
     if (this.mcpBridge) {
       this.mcpBridge.stop();
       this.mcpBridge = undefined;
-      vscode.window.showInformationMessage('AutoX MCP server stopped');
+      vscode.window.showInformationMessage('Autox.js MCP server stopped');
     }
+  }
+
+  /** 读取端口配置并做范围校验（非法值回落到默认） */
+  static readPort(key: 'serverPort' | 'mcpPort', def: number): number {
+    const v = vscode.workspace.getConfiguration('autoxAi').get<number>(key, def);
+    const n = typeof v === 'number' ? Math.floor(v) : def;
+    return (n >= 1024 && n <= 65535) ? n : def;
   }
 
   startTrackADBDevices() {
@@ -473,22 +545,38 @@ class Extension {
 
 export let _context: vscode.ExtensionContext;
 let extension = new Extension();
+/** 剪贴板同步（activate 时创建；构造函数要碰 vscode.window，不能在模块级 new） */
+let clipSync: ClipSyncManager | undefined = undefined;
 const commands = ['startAllServer', 'stopAllServer', 'startServer', 'stopServer', 'startTrackADBDevices',
   'stopTrackADBDevices', 'manuallyConnectADB', 'manuallyDisconnect', 'showServerAddress', 'showQrCode', 'openDocument', 'run', 'runOnDevice',
   'stop', 'stopAll', 'rerun', 'save', 'saveToDevice', 'newProject', 'runProject', 'saveProject',
-  'startMcpServer', 'stopMcpServer'];
+  'startMcpServer', 'stopMcpServer',
+  'clipSyncToggle', 'clipSyncInstallSender', 'clipSyncStatus'];
 
 export function activate(context: vscode.ExtensionContext) {
-  console.log('extension "Autox.js-VSCode-Extension " is now active.');
+  console.log('Autox.js-VSCodeExt-Ai is now active.');
+  // 端口必须在任何 listen() 之前设置（activate 里随后就会自动拉起服务）
+  const configuredPort = Extension.readPort('serverPort', 9317);
+  if (configuredPort !== server.getPort()) {
+    server.setPort(configuredPort);
+  }
   commands.forEach((command) => {
     let action: Function = extension[command];
-    context.subscriptions.push(vscode.commands.registerCommand('extension.' + command, action.bind(extension)));
+    context.subscriptions.push(vscode.commands.registerCommand('autoxAi.' + command, action.bind(extension)));
     _context = context;
     // @ts-ignore
     console.log(context.extension.packageJSON.version)
   })
   // 自动拉起 MCP 桥，让 AI 主机随时可连（方案 §15.3）
+  // 这期间的端口冲突只走状态栏提示（listen 是异步的，5 秒窗口足够覆盖）
+  silentPortErrors = true;
   extension.startMcpServer();
+  setTimeout(() => { silentPortErrors = false; }, 5000);
+
+  // 剪贴板同步：默认关闭，只挂状态栏与日志监听，不读剪贴板
+  clipSync = new ClipSyncManager(server);
+  context.subscriptions.push(clipSync);
+  clipSync.start();
 }
 
 export function deactivate() {

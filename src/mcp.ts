@@ -16,9 +16,17 @@ import * as http from 'http';
 import * as url from 'url';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as crypto from 'crypto';
 import { AutoJsDebugServer, Device } from './autojs-debug';
 
-const MCP_PORT = 18789;
+/** MCP 默认端口；实际端口来自配置 autoxAi.mcpPort（同时装多个同类插件时可改） */
+export const DEFAULT_MCP_PORT = 18789;
+/**
+ * 允许的 Host：只认回环地址。
+ * DNS rebinding 攻击时浏览器把 attacker.com 解析到 127.0.0.1，但 Host 头仍是 attacker.com，
+ * 这一条就能把它挡在门外。
+ */
+const LOOPBACK_HOST = /^(127\.0\.0\.1|localhost|\[::1\])(:\d{1,5})?$/i;
 const MCP_PREFIX = 'AUTOMCP::';
 const RUN_TIMEOUT = 30000; // 方案 §14.3：默认 30s 超时
 const SCREEN_DIR = '/sdcard/Download/mcp/imgs'; // 方案 §3.6 / §11-B
@@ -120,23 +128,101 @@ export class McpBridge {
   /** 每台设备的串行锁链（约束 4） */
   private locks = new Map<string, Promise<any>>();
 
-  constructor(server: AutoJsDebugServer, port: number = MCP_PORT) {
+  /**
+   * 可选的访问令牌（来自 `autoxAi.mcpToken`）。留空=不启用 token，
+   * 但仍会做 Host/Origin 校验（见 guard）。
+   */
+  private token = '';
+
+  constructor(server: AutoJsDebugServer, port: number = DEFAULT_MCP_PORT) {
     this.server = server;
     this.port = port;
   }
 
-  start(): void {
+  /** 设置访问令牌；空字符串表示不启用 */
+  setToken(token: string): void {
+    this.token = (token || '').trim();
+  }
+
+  /**
+   * 本地服务的准入校验（**不需要账号体系**）。
+   *
+   * 为什么必须做：
+   *   服务只监听 127.0.0.1，但浏览器里任意网页都能 `fetch('http://127.0.0.1:18789/mcp',
+   *   {mode:'no-cors', headers:{'Content-Type':'text/plain'}})` —— 用 text/plain 绕开预检，
+   *   我们的 JSON.parse 照单全收，于是网页可以调用 `device_run_code` 在用户手机上执行任意 JS。
+   *
+   * 三道闸：
+   *   1) Host 必须是回环地址 —— 挡住 DNS rebinding（攻击者域名解析到 127.0.0.1 时 Host 是他自己的域名）；
+   *   2) 带 Origin 头的一律拒绝 —— 本地 MCP 客户端（CLI/桌面 AI）不会发 Origin，发的一定是浏览器；
+   *   3) 配了 token 时校验 Bearer / ?token= —— 可选，用于共享机器或想再上一层保险的场景。
+   */
+  private guard(req: http.IncomingMessage, res: http.ServerResponse, parsed: url.UrlWithParsedQuery): boolean {
+    const host = String(req.headers.host || '');
+    const origin = req.headers.origin;
+
+    const deny = (code: number, message: string, extraHeaders?: http.OutgoingHttpHeaders): boolean => {
+      console.warn(`[Autox.js-Ai-MCP] 拒绝请求：${message} (host=${host || '-'}, origin=${origin || '-'})`);
+      res.writeHead(code, Object.assign({ 'Content-Type': 'application/json' }, extraHeaders || {}));
+      res.end(JSON.stringify({ error: message }));
+      return false;
+    };
+
+    if (!LOOPBACK_HOST.test(host)) {
+      return deny(403, 'forbidden: host must be loopback');
+    }
+    if (origin) {
+      return deny(403, 'forbidden: browser origin not allowed');
+    }
+    if (this.token) {
+      const auth = String(req.headers.authorization || '');
+      const bearer = auth.toLowerCase().startsWith('bearer ') ? auth.slice(7).trim() : '';
+      const q = parsed.query && parsed.query.token ? String(parsed.query.token) : '';
+      const okBearer = bearer !== '' && McpBridge.safeEqual(bearer, this.token);
+      const okQuery = q !== '' && McpBridge.safeEqual(q, this.token);
+      if (!okBearer && !okQuery) {
+        return deny(401, 'unauthorized: missing or invalid token', { 'WWW-Authenticate': 'Bearer' });
+      }
+    }
+    return true;
+  }
+
+  /** 定长比较，避免时序侧信道 */
+  private static safeEqual(a: string, b: string): boolean {
+    const ba = Buffer.from(a, 'utf8');
+    const bb = Buffer.from(b, 'utf8');
+    if (ba.length !== bb.length) {
+      return false;
+    }
+    return crypto.timingSafeEqual(ba, bb);
+  }
+
+  /**
+   * 启动 MCP 监听。
+   * 回调里给出**真实结果**：以前是"先弹成功提示、再异步 listen"，端口被占时提示与事实相反。
+   * 返回 false 表示已在运行（无需重复启动）。
+   */
+  start(onResult?: (ok: boolean, port: number, code?: string) => void): boolean {
     if (this.running) {
-      return;
+      if (onResult) { onResult(true, this.port, 'ALREADY_RUNNING'); }
+      return false;
     }
     this.httpServer = http.createServer((req, res) => this.handleRequest(req, res));
+    this.httpServer.on('error', (e: any) => {
+      this.running = false;
+      const code = e && e.code ? String(e.code) : '';
+      console.error('[Autox.js-Ai-MCP] http server error:', e && e.message);
+      if (onResult) { onResult(false, this.port, code); }
+    });
     this.httpServer.listen(this.port, '127.0.0.1', () => {
       this.running = true;
-      console.log(`[AutoX-MCP] listening on http://127.0.0.1:${this.port}/sse`);
+      const addr: any = this.httpServer.address();
+      const realPort = addr && addr.port ? addr.port : this.port;
+      this.port = realPort;
+      console.log(`[Autox.js-Ai-MCP] listening on http://127.0.0.1:${realPort}/sse`);
+      if (onResult) { onResult(true, realPort); }
     });
-    this.httpServer.on('error', (e: any) => {
-      console.error('[AutoX-MCP] http server error:', e && e.message);
-    });
+    return true;
   }
 
   stop(): void {
@@ -149,7 +235,7 @@ export class McpBridge {
     });
     this.sessions.clear();
     this.running = false;
-    console.log('[AutoX-MCP] stopped');
+    console.log('[Autox.js-Ai-MCP] stopped');
   }
 
   isRunning(): boolean {
@@ -161,6 +247,10 @@ export class McpBridge {
   // ---------------------------------------------------------------------------
   private handleRequest(req: http.IncomingMessage, res: http.ServerResponse): void {
     const parsed = url.parse(req.url || '', true);
+    // 准入校验必须在路由之前：任何端点（含 /health）都不给浏览器开
+    if (!this.guard(req, res, parsed)) {
+      return;
+    }
     const pathname = parsed.pathname || '';
     if (pathname.endsWith('/sse') && req.method === 'GET') {
       this.handleSse(req, res);
@@ -198,7 +288,7 @@ export class McpBridge {
       if (msg.id === undefined || msg.id === null) {
         res.writeHead(202);
         res.end();
-        this.dispatch(msg, sid).catch(err => console.error('[AutoX-MCP] dispatch error:', err));
+        this.dispatch(msg, sid).catch(err => console.error('[Autox.js-Ai-MCP] dispatch error:', err));
         return;
       }
       this.dispatch(msg, sid)
@@ -222,8 +312,9 @@ export class McpBridge {
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive',
-      'Access-Control-Allow-Origin': '*'
+      'Connection': 'keep-alive'
+      // 不再发 Access-Control-Allow-Origin：本地 MCP 客户端不是浏览器，不需要 CORS；
+      // 发出去等于允许任意网页读取响应。
     });
     res.write(`event: endpoint\ndata: /messages?sessionId=${sessionId}\n\n`);
     this.sessions.set(sessionId, res);
@@ -254,7 +345,7 @@ export class McpBridge {
       if (msg.id === undefined || msg.id === null) {
         res.writeHead(202);
         res.end();
-        this.dispatch(msg, sessionId).catch(err => console.error('[AutoX-MCP] dispatch error:', err));
+        this.dispatch(msg, sessionId).catch(err => console.error('[Autox.js-Ai-MCP] dispatch error:', err));
         return;
       }
       // 请求 -> 处理完后经 SSE 流回结果
@@ -1310,6 +1401,11 @@ export class McpBridge {
           return;
         }
         if (captureAll) {
+          // 剪贴板同步的桥接日志会混进来（它借 console.log 当上行通道），
+          // 不是本次脚本的输出，必须滤掉，否则 device_run_code 的返回会被污染。
+          if (text.indexOf('AUTOCLIP1::') >= 0) {
+            return;
+          }
           collected.push(text);
           if (text.indexOf(prefix + '__END__') >= 0) {
             finish();

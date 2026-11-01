@@ -2,8 +2,14 @@
 .vscode-test/**
 out/test/**
 out/**/*.map
-!src/document
 src/**
 .gitignore
 tsconfig.json
 vsc-extension-quickstart.md
+
+# ↓ 以下为 2.2.2 发布前新增：不排除会把 29MB 垃圾和本机 git 身份打进 vsix
+*.vsix
+.git/**
+.github/**
+docs/**
+package-lock.json
